@@ -1,5 +1,5 @@
 # Restaurant Recommender System
-**Student Assignment**
+**Assignment**
 
 This project predicts which restaurants a customer is likely to order from. It uses machine learning (LightGBM) to analyze past orders, location, and vendor details.
 
