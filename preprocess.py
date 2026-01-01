@@ -10,9 +10,12 @@ warnings.filterwarnings('ignore')
 # --------------------------------------------------------------------------
 # CONFIGURATION
 # --------------------------------------------------------------------------
-# Simple string paths
-DATA_TRAIN = "data/Train"
-DATA_TEST = "data/Test"
+# Get the directory where this script is located
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+# Data paths relative to the script location
+DATA_TRAIN = os.path.join(BASE_DIR, "data", "Train")
+DATA_TEST = os.path.join(BASE_DIR, "data", "Test")
 
 # Filenames
 FILES = {
