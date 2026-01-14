@@ -1,23 +1,15 @@
-
 import os
 import pandas as pd
 import numpy as np
 import warnings
 
-# Suppress minor warnings for cleaner output
 warnings.filterwarnings('ignore')
 
-# --------------------------------------------------------------------------
-# CONFIGURATION
-# --------------------------------------------------------------------------
-# Get the directory where this script is located
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-# Data paths relative to the script location
 DATA_TRAIN = os.path.join(BASE_DIR, "data", "Train")
 DATA_TEST = os.path.join(BASE_DIR, "data", "Test")
 
-# Filenames
 FILES = {
     'train_customers': 'train_customers.csv',
     'train_locations': 'train_locations.csv',
@@ -28,16 +20,12 @@ FILES = {
 }
 
 
-# --------------------------------------------------------------------------
-# DATA LOADING
-# --------------------------------------------------------------------------
 def load_file(filename_key):
     """
     Finds and loads a CSV file from data folders.
     """
     fname = FILES[filename_key]
     
-    # Try looking in both Train and Test folders
     search_paths = [DATA_TRAIN, DATA_TEST]
     
     for folder in search_paths:
@@ -46,7 +34,7 @@ def load_file(filename_key):
             print(f"Loading {fname}...")
             return pd.read_csv(full_path)
     
-    # If not found by exact name, try searching for the file in directories
+    # Fallback: search for partial filename matches
     for folder in search_paths:
         if os.path.exists(folder):
             for existing_file in os.listdir(folder):
@@ -71,15 +59,11 @@ def load_all_data():
     return train_cust, train_loc, train_ord, vendors, test_cust, test_loc
 
 
-# --------------------------------------------------------------------------
-# FEATURE ENGINEERING
-# --------------------------------------------------------------------------
-
 def prepare_orders(orders_df):
     """
     Cleans order data and creates a proper date column.
     """
-    # handle different column names for dates
+    # Handle different column names for dates
     if 'created_at' in orders_df.columns:
         orders_df['order_date'] = pd.to_datetime(orders_df['created_at'])
     elif 'delivery_date' in orders_df.columns:
@@ -92,10 +76,8 @@ def get_vendor_popularity(orders_df, vendors_df):
     """
     Calculates how many orders each vendor has received.
     """
-    # Count orders per vendor
     pop = orders_df.groupby('vendor_id').size().reset_index(name='vendor_order_count')
     
-    # Add this info to the vendors table
     vendors_df = vendors_df.merge(pop, left_on='id', right_on='vendor_id', how='left')
     vendors_df['vendor_order_count'] = vendors_df['vendor_order_count'].fillna(0)
     
@@ -105,7 +87,6 @@ def get_customer_stats(orders_df, customers_df):
     """
     Calculates summary statistics for each customer.
     """
-    # Aggregate order info
     stats = orders_df.groupby('customer_id').agg({
         'order_id': 'count',
         'grand_total': 'mean',
@@ -114,7 +95,6 @@ def get_customer_stats(orders_df, customers_df):
     
     stats.columns = ['customer_id', 'total_orders', 'avg_spend', 'last_order_date']
     
-    # Merge back to customers
     customers_df = customers_df.merge(stats, on='customer_id', how='left')
     return customers_df
 
@@ -124,33 +104,27 @@ def create_features(pairs_df, locations_df, vendors_df, customers_df, orders_df)
     """
     print("Generating features...")
     
-    # 1. Add Location Co-ordinates
-    # Clean up column names first (remove spaces)
+    # Clean up column names
     locations_df = locations_df.rename(columns=lambda x: x.strip())
     
-    # We primarily need customer location info
     cust_locs = locations_df[['customer_id', 'location_number', 'latitude', 'longitude']]
     
     pairs_df = pairs_df.merge(cust_locs, on=['customer_id', 'location_number'], how='left')
     
-    # 2. Add Vendor Info
     pairs_df = pairs_df.merge(
         vendors_df[['id', 'latitude', 'longitude', 'vendor_order_count', 'vendor_rating']], 
         left_on='vendor_id', right_on='id', how='left'
     )
     
-    # 3. Add Customer Stats
     pairs_df = pairs_df.merge(customers_df[['customer_id', 'total_orders', 'avg_spend', 'last_order_date']], on='customer_id', how='left')
     
-    # 4. Calculate Distance (Simple Euclidean)
-    # Distance = sqrt((x2-x1)^2 + (y2-y1)^2)
+    # Calculate distance between customer and vendor
     pairs_df['distance'] = np.sqrt(
         (pairs_df['latitude_x'] - pairs_df['latitude_y'])**2 + 
         (pairs_df['longitude_x'] - pairs_df['longitude_y'])**2
     )
     
-    # 5. Has the customer ordered from this vendor before?
-    # Create a lookup set of (customer, vendor) from history
+    # Check if customer has ordered from this vendor before
     past_orders = set(zip(orders_df['customer_id'], orders_df['vendor_id']))
     
     def has_ordered(row):
@@ -158,13 +132,11 @@ def create_features(pairs_df, locations_df, vendors_df, customers_df, orders_df)
         
     pairs_df['ordered_before'] = pairs_df.apply(has_ordered, axis=1)
     
-    # 6. Recency (Days since last order)
+    # Days since last order
     pairs_df['days_since_last'] = (pd.to_datetime(pairs_df['order_date']) - pd.to_datetime(pairs_df['last_order_date'])).dt.days
     
-    # Fill missing values
     pairs_df = pairs_df.fillna(0)
     
-    # Select only numeric features for the model
     feature_cols = [
         'vendor_order_count', 
         'vendor_rating', 
